@@ -43,14 +43,14 @@ export const TRIP_UPDATE_FIELD_ORDER = [
 
 export const LODGING_FIELD_ORDER = [
 	"uuid",
-	"trip_uuid",
 	"trip_id",
+	"trip_uuid",
 	"is_client_traveler",
 	"display_name",
 	"Image",
-	"supplier_name",
-	"supplier_conf_num",
 	"booking_rate",
+	"supplier_conf_num",
+	"supplier_name",
 	"is_purchased",
 	"notes",
 	"total_cost",
@@ -61,13 +61,13 @@ export const LODGING_FIELD_ORDER = [
 
 export const AIR_FIELD_ORDER = [
 	"uuid",
-	"trip_uuid",
 	"trip_id",
+	"trip_uuid",
 	"is_client_traveler",
 	"display_name",
 	"Image",
-	"supplier_name",
 	"supplier_conf_num",
+	"supplier_name",
 	"is_purchased",
 	"notes",
 	"total_cost",
@@ -90,8 +90,8 @@ export const AIR_SEGMENT_FIELD_ORDER = [
 
 export const TRANSPORT_FIELD_ORDER = [
 	"uuid",
-	"trip_uuid",
 	"trip_id",
+	"trip_uuid",
 	"is_client_traveler",
 	"display_name",
 	"Image",
@@ -116,8 +116,8 @@ export const TRANSPORT_SEGMENT_FIELD_ORDER = [
 
 export const ACTIVITY_FIELD_ORDER = [
 	"uuid",
-	"trip_uuid",
 	"trip_id",
+	"trip_uuid",
 	"is_client_traveler",
 	"display_name",
 	"Image",

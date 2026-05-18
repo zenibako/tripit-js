@@ -1,3 +1,5 @@
+import { access, readFile } from "node:fs/promises";
+import { extname } from "node:path";
 import fetch from "node-fetch";
 import { authenticate } from "./auth";
 import {
@@ -33,6 +35,22 @@ import {
 	orderObjectByKeys,
 	toBoolean,
 } from "./utils";
+
+function mimeTypeForPath(filePath: string): string | undefined {
+	switch (extname(filePath).toLowerCase()) {
+		case ".pdf":
+			return "application/pdf";
+		case ".jpg":
+		case ".jpeg":
+			return "image/jpeg";
+		case ".png":
+			return "image/png";
+		case ".gif":
+			return "image/gif";
+		default:
+			return undefined;
+	}
+}
 
 export class TripIt {
 	private config: TripItConfig;
@@ -217,15 +235,16 @@ export class TripIt {
 		caption?: string;
 		mimeType?: string;
 	}): Promise<TripImage> {
-		const file = Bun.file(params.filePath);
-		const exists = await file.exists();
-		if (!exists) {
+		try {
+			await access(params.filePath);
+		} catch {
 			throw new Error(`File not found: ${params.filePath}`);
 		}
 
-		const buffer = await file.arrayBuffer();
-		const base64Content = Buffer.from(buffer).toString("base64");
-		const mimeType = params.mimeType || file.type || "application/octet-stream";
+		const buffer = await readFile(params.filePath);
+		const base64Content = buffer.toString("base64");
+		const mimeType =
+			params.mimeType || mimeTypeForPath(params.filePath) || "application/pdf";
 		const caption =
 			params.caption || params.filePath.split("/").pop() || "document";
 
@@ -568,31 +587,34 @@ export class TripIt {
 		return this.apiPost<LodgingResponse>(
 			this.endpoint("v2", "create/lodging"),
 			{
-				LodgingObject: clean({
-					[tripKey]: params.tripId,
-					supplier_name: params.hotelName,
-					supplier_conf_num: params.supplierConfNum,
-					booking_rate: params.bookingRate,
-					notes: params.notes,
-					total_cost: params.totalCost,
-					StartDateTime: {
-						date: params.checkInDate,
-						time: normalizeTime(params.checkInTime),
-						timezone: params.timezone,
-					},
-					EndDateTime: {
-						date: params.checkOutDate,
-						time: normalizeTime(params.checkOutTime),
-						timezone: params.timezone,
-					},
-					Address: clean({
-						address: params.street,
-						city: params.city,
-						state: params.state,
-						zip: params.zip,
-						country: params.country,
+				LodgingObject: orderObjectByKeys(
+					clean({
+						[tripKey]: params.tripId,
+						booking_rate: params.bookingRate,
+						supplier_conf_num: params.supplierConfNum,
+						supplier_name: params.hotelName,
+						notes: params.notes,
+						total_cost: params.totalCost,
+						StartDateTime: {
+							date: params.checkInDate,
+							time: normalizeTime(params.checkInTime),
+							timezone: params.timezone,
+						},
+						EndDateTime: {
+							date: params.checkOutDate,
+							time: normalizeTime(params.checkOutTime),
+							timezone: params.timezone,
+						},
+						Address: clean({
+							address: params.street,
+							city: params.city,
+							state: params.state,
+							zip: params.zip,
+							country: params.country,
+						}),
 					}),
-				}),
+					LODGING_FIELD_ORDER,
+				),
 			},
 		);
 	}
@@ -773,15 +795,18 @@ export class TripIt {
 			}),
 		);
 		return this.apiPost<AirResponse>(this.endpoint("v2", "create/air"), {
-			AirObject: clean({
-				trip_uuid: params.tripId,
-				display_name: params.displayName,
-				supplier_name: params.supplierName,
-				supplier_conf_num: params.supplierConfNum,
-				notes: params.notes,
-				total_cost: params.totalCost,
-				Segment: segments,
-			}),
+			AirObject: orderObjectByKeys(
+				clean({
+					trip_uuid: params.tripId,
+					display_name: params.displayName,
+					supplier_conf_num: params.supplierConfNum,
+					supplier_name: params.supplierName,
+					notes: params.notes,
+					total_cost: params.totalCost,
+					Segment: segments,
+				}),
+				AIR_FIELD_ORDER,
+			),
 		});
 	}
 
@@ -881,9 +906,9 @@ export class TripIt {
 			uuid: existingFlight.uuid,
 			is_client_traveler: toBoolean(existingFlight.is_client_traveler),
 			display_name: params.displayName ?? existingFlight.display_name,
-			supplier_name: params.supplierName ?? existingFlight.supplier_name,
 			supplier_conf_num:
 				params.supplierConfNum ?? existingFlight.supplier_conf_num,
+			supplier_name: params.supplierName ?? existingFlight.supplier_name,
 			is_purchased: toBoolean(existingFlight.is_purchased),
 			notes: params.notes ?? existingFlight.notes,
 			total_cost: params.totalCost ?? existingFlight.total_cost,

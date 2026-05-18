@@ -1,3 +1,4 @@
+- Repo: dvcrn/tripit
 
 ## Workflow
 
@@ -20,8 +21,14 @@ Default to using Bun instead of Node.js.
 - `Bun.redis` for Redis. Don't use `ioredis`.
 - `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
 - `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
+- Prefer `Bun.file` over `node:fs`'s readFile/writeFile for Bun-only code. The published library and CLI are bundled with `--target node`, so exported/runtime package code must not depend on the `Bun` global.
 - Bun.$`ls` instead of execa.
+
+## TripIt API Payloads
+
+- TripIt validates JSON requests against its XML XSD. Object key order can matter when TripIt converts JSON to XML for `xs:sequence` types.
+- For reservation objects, keep fields in XSD order: base object fields first, then reservation fields such as `booking_rate`, `supplier_conf_num`, `supplier_name`, `is_purchased`, `notes`, and `total_cost`, then object-specific children such as `StartDateTime`, `EndDateTime`, `Address`, or `Segment`.
+- When create or replace calls return `400 JSON did not validate with the xsd`, check outgoing key order before assuming the scalar value itself is invalid.
 
 ## Testing
 
