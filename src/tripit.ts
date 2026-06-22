@@ -30,6 +30,8 @@ import {
 	TRIP_UPDATE_FIELD_ORDER,
 } from "./constants";
 import {
+	buildAddress,
+	buildDateTime,
 	clean,
 	normalizeArray,
 	normalizeTime,

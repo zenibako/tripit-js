@@ -87,7 +87,11 @@ tripit flights create --trip <TRIP_UUID> --name "Test Flight" --airline "Example
 tripit transport create --trip <TRIP_UUID> --from "1 Market St" --to "SFO Airport" --depart-date 2026-03-20 --depart-time 08:00 --arrive-date 2026-03-20 --arrive-time 09:00 --timezone UTC --name "Hotel to Airport" -o json
 
 tripit activities create --trip <TRIP_UUID> --name "Dinner" --start-date 2026-03-20 --start-time 19:00 --end-date 2026-03-20 --end-time 21:00 --timezone UTC --address "200 Example St" --location-name "Downtown" -o json
+
+tripit restaurants create --trip <TRIP_UUID> --name "The Grey" --date 2026-06-27 --time 17:00 --timezone America/New_York --address "109 Martin Luther King Jr Blvd" --city Savannah --state GA --zip 31401 --country US -o json
 ```
+
+Restaurants use a single `DateTime` field (a reservation is a point in time, not a range) — `--date`, `--time`, `--timezone`. If you only want a categorical entry without a time, omit the date/time/timezone flags.
 
 5. Update resources:
 
@@ -111,7 +115,41 @@ tripit documents remove <HOTEL_UUID> --all
 
 The `--type` flag (lodging, activity, air, transport) is auto-detected from the UUID when omitted.
 
-7. Delete resources:
+7. Manage unfiled notes (forwarded emails like Resy/OpenTable confirmations):
+
+```bash
+tripit notes list
+tripit notes get <NOTE_UUID>
+tripit notes delete <NOTE_UUID>
+```
+
+Convert a note into a typed trip plan. The CLI does no text parsing — read the note with `notes get`, derive the fields yourself (or have an LLM do it), then pass them as explicit flags:
+
+```bash
+# Restaurant — single DateTime (date + time + timezone)
+tripit notes convert <NOTE_UUID> restaurant <TRIP_UUID> \
+  --name "The Grey" \
+  --start-date 2026-06-27 --start-time 17:00 --timezone America/New_York \
+  --address "109 Martin Luther King Jr Blvd" --city Savannah --state GA --zip 31401
+
+# Activity — has separate start/end times, use for things with a duration
+tripit notes convert <NOTE_UUID> activity <TRIP_UUID> \
+  --name "Dinner at The Grey" --location-name "The Grey" \
+  --start-date 2026-06-27 --start-time 17:00 \
+  --end-date 2026-06-27 --end-time 19:00 \
+  --timezone America/New_York \
+  --address "109 Martin Luther King Jr Blvd" --city Savannah --state GA --zip 31401
+
+# Preview the create payload without writing anything
+tripit notes convert <NOTE_UUID> restaurant <TRIP_UUID> --name X --dry-run
+
+# Skip the post-create note delete
+tripit notes convert <NOTE_UUID> restaurant <TRIP_UUID> --name X --keep-note
+```
+
+Supported types: `restaurant`, `activity`, `hotel`, `transport`. Flight conversion isn't supported via this command — segment data (airport codes, flight numbers) doesn't map cleanly from arbitrary note text; use `tripit flights create` directly.
+
+8. Delete resources:
 
 ```bash
 tripit activities delete <ACTIVITY_UUID>

@@ -1,3 +1,5 @@
+import { ADDRESS_FIELD_ORDER } from "./constants";
+
 export function normalizeTime(time: string | undefined): string | undefined {
 	if (!time) return undefined;
 	const parts = time.split(":");
@@ -39,3 +41,37 @@ export function toBoolean(value: unknown): boolean | undefined {
 	if (typeof value === "string") return value === "true";
 	return Boolean(value);
 }
+
+export function buildDateTime(
+	date?: string,
+	time?: string,
+	timezone?: string,
+): Record<string, string> | undefined {
+	const obj = clean({
+		date,
+		time: time ? normalizeTime(time) : undefined,
+		timezone,
+	});
+	return Object.keys(obj).length > 0 ? obj : undefined;
+}
+
+export function buildAddress(params: {
+	street?: string;
+	city?: string;
+	state?: string;
+	zip?: string;
+	country?: string;
+}): Record<string, string> | undefined {
+	const obj = orderObjectByKeys(
+		clean({
+			address: params.street,
+			city: params.city,
+			state: params.state,
+			zip: params.zip,
+			country: params.country,
+		}),
+		ADDRESS_FIELD_ORDER,
+	);
+	return Object.keys(obj).length > 0 ? obj : undefined;
+}
+
