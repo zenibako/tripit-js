@@ -1,25 +1,14 @@
-import { access, readFile } from "node:fs/promises";
-import { extname } from "node:path";
-import fetch from "node-fetch";
 import { authenticate } from "./auth";
-import {
-	ACTIVITY_FIELD_ORDER,
-	ADDRESS_FIELD_ORDER,
-	AIR_FIELD_ORDER,
-	AIR_SEGMENT_FIELD_ORDER,
-	IMAGE_FIELD_ORDER,
-	LODGING_FIELD_ORDER,
-	TRANSPORT_FIELD_ORDER,
-	TRANSPORT_SEGMENT_FIELD_ORDER,
-	TRIP_UPDATE_FIELD_ORDER,
-} from "./constants";
 import type {
 	ActivityResponse,
 	AirResponse,
 	AirSegment,
 	DeleteResponse,
 	LodgingResponse,
+	NoteListResponse,
+	NoteResponse,
 	OneOrMany,
+	RestaurantResponse,
 	TransportResponse,
 	TransportSegment,
 	TripGetResponse,
@@ -29,6 +18,18 @@ import type {
 	TripMutationResponse,
 } from "./types";
 import {
+	ACTIVITY_FIELD_ORDER,
+	ADDRESS_FIELD_ORDER,
+	AIR_FIELD_ORDER,
+	AIR_SEGMENT_FIELD_ORDER,
+	IMAGE_FIELD_ORDER,
+	LODGING_FIELD_ORDER,
+	RESTAURANT_FIELD_ORDER,
+	TRANSPORT_FIELD_ORDER,
+	TRANSPORT_SEGMENT_FIELD_ORDER,
+	TRIP_UPDATE_FIELD_ORDER,
+} from "./constants";
+import {
 	clean,
 	normalizeArray,
 	normalizeTime,
@@ -36,20 +37,10 @@ import {
 	toBoolean,
 } from "./utils";
 
-function mimeTypeForPath(filePath: string): string | undefined {
-	switch (extname(filePath).toLowerCase()) {
-		case ".pdf":
-			return "application/pdf";
-		case ".jpg":
-		case ".jpeg":
-			return "image/jpeg";
-		case ".png":
-			return "image/png";
-		case ".gif":
-			return "image/gif";
-		default:
-			return undefined;
-	}
+export interface ImageAttachment {
+	content: Uint8Array;
+	mimeType: string;
+	caption?: string;
 }
 
 export class TripIt {
@@ -230,30 +221,20 @@ export class TripIt {
 		);
 	}
 
-	private async buildImageAttachment(params: {
-		filePath: string;
-		caption?: string;
-		mimeType?: string;
-	}): Promise<TripImage> {
-		try {
-			await access(params.filePath);
-		} catch {
-			throw new Error(`File not found: ${params.filePath}`);
+	private buildImageFromAttachment(attachment: ImageAttachment): TripImage {
+		let binary = "";
+		const bytes = attachment.content;
+		const chunkSize = 0x8000;
+		for (let i = 0; i < bytes.length; i += chunkSize) {
+			binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
 		}
-
-		const buffer = await readFile(params.filePath);
-		const base64Content = buffer.toString("base64");
-		const mimeType =
-			params.mimeType || mimeTypeForPath(params.filePath) || "application/pdf";
-		const caption =
-			params.caption || params.filePath.split("/").pop() || "document";
-
+		const base64Content = btoa(binary);
 		return orderObjectByKeys(
 			{
-				caption,
+				caption: attachment.caption ?? "document",
 				ImageData: {
 					content: base64Content,
-					mime_type: mimeType,
+					mime_type: attachment.mimeType,
 				},
 			},
 			IMAGE_FIELD_ORDER,
@@ -311,20 +292,14 @@ export class TripIt {
 	async attachDocument(params: {
 		objectType?: "lodging" | "activity" | "air" | "transport";
 		objectId: string;
-		filePath: string;
-		caption?: string;
-		mimeType?: string;
+		attachment: ImageAttachment;
 	}): Promise<
 		LodgingResponse | ActivityResponse | AirResponse | TransportResponse
 	> {
 		const objectType =
 			params.objectType || (await this.detectObjectType(params.objectId));
 
-		const newImage = await this.buildImageAttachment({
-			filePath: params.filePath,
-			caption: params.caption,
-			mimeType: params.mimeType,
-		});
+		const newImage = this.buildImageFromAttachment(params.attachment);
 
 		if (objectType === "lodging") {
 			const existingHotelResponse = await this.getHotel(params.objectId);
@@ -549,6 +524,52 @@ export class TripIt {
 				? { uuid: existingTransport.uuid, Image: imageField }
 				: { uuid: existingTransport.uuid },
 		);
+	}
+
+	// === Notes ===
+
+	async listNotes(
+		options: { pageSize?: number; pageNum?: number; unfiledOnly?: boolean } = {},
+	): Promise<NoteListResponse> {
+		const pageSize = options.pageSize ?? 25;
+		const pageNum = options.pageNum ?? 1;
+		const unfiledOnly = options.unfiledOnly ?? true;
+		const params = new URLSearchParams({
+			types: "note",
+			include_objects: "true",
+			page_size: String(pageSize),
+			page_num: String(pageNum),
+			format: "json",
+		});
+		if (unfiledOnly) params.set("is_unfiled_items_only", "true");
+		return this.apiGet<NoteListResponse>(
+			`https://api.tripit.com/v2/list/object?${params}`,
+		);
+	}
+
+	async getNote(id: string): Promise<NoteResponse> {
+		return this.apiGet<NoteResponse>(this.identifierEndpoint("get", "note", id));
+	}
+
+	async deleteNote(id: string): Promise<DeleteResponse> {
+		return this.apiGet<DeleteResponse>(
+			this.identifierEndpoint("delete", "note", id),
+		);
+	}
+
+	async convertNote<T>(params: {
+		noteId: string;
+		create: () => Promise<T>;
+	}): Promise<{ created: T; noteDeleted: boolean }> {
+		const created = await params.create();
+		let noteDeleted = false;
+		try {
+			await this.deleteNote(params.noteId);
+			noteDeleted = true;
+		} catch {
+			// Conversion is still useful even if delete fails; caller can retry.
+		}
+		return { created, noteDeleted };
 	}
 
 	// === Hotels (Lodging) ===
@@ -1313,6 +1334,161 @@ export class TripIt {
 				ActivityObject: orderObjectByKeys(
 					clean(activityObject),
 					ACTIVITY_FIELD_ORDER,
+				),
+			},
+		);
+	}
+
+	// === Restaurants ===
+
+	async getRestaurant(id: string): Promise<RestaurantResponse> {
+		return this.apiGet<RestaurantResponse>(
+			this.identifierEndpoint("get", "restaurant", id),
+		);
+	}
+
+	async deleteRestaurant(id: string): Promise<DeleteResponse> {
+		return this.apiGet<DeleteResponse>(
+			this.identifierEndpoint("delete", "restaurant", id),
+		);
+	}
+
+	async createRestaurant(params: {
+		tripId: string;
+		displayName: string;
+		supplierName?: string;
+		supplierConfNum?: string;
+		bookingRate?: string;
+		notes?: string;
+		totalCost?: string;
+		date?: string;
+		time?: string;
+		timezone?: string;
+		street?: string;
+		city?: string;
+		state?: string;
+		zip?: string;
+		country?: string;
+	}): Promise<RestaurantResponse> {
+		const tripKey = params.tripId.includes("-") ? "trip_uuid" : "trip_id";
+		return this.apiPost<RestaurantResponse>(
+			this.endpoint("v2", "create/restaurant"),
+			{
+				RestaurantObject: orderObjectByKeys(
+					clean({
+						[tripKey]: params.tripId,
+						display_name: params.displayName,
+						booking_rate: params.bookingRate,
+						supplier_conf_num: params.supplierConfNum,
+						supplier_name: params.supplierName ?? params.displayName,
+						notes: params.notes,
+						total_cost: params.totalCost,
+						DateTime: { date: params.date, time: normalizeTime(params.time), timezone: params.timezone },
+						Address: clean({
+							address: params.street,
+							city: params.city,
+							state: params.state,
+							zip: params.zip,
+							country: params.country,
+						}),
+					}),
+					RESTAURANT_FIELD_ORDER,
+				),
+			},
+		);
+	}
+
+	async updateRestaurant(params: {
+		id?: string;
+		uuid?: string;
+		tripId?: string;
+		displayName?: string;
+		supplierName?: string;
+		supplierConfNum?: string;
+		bookingRate?: string;
+		notes?: string;
+		totalCost?: string;
+		date?: string;
+		time?: string;
+		timezone?: string;
+		street?: string;
+		city?: string;
+		state?: string;
+		zip?: string;
+		country?: string;
+		Image?: OneOrMany<TripImage>;
+	}): Promise<RestaurantResponse> {
+		const identifier = params.uuid || params.id;
+		if (!identifier) {
+			throw new Error("Either uuid or id parameter is required");
+		}
+
+		const existingResp = await this.getRestaurant(identifier);
+		const existing = existingResp.RestaurantObject;
+		if (!existing?.uuid) {
+			throw new Error(`Restaurant with identifier ${identifier} not found`);
+		}
+
+		const tripId =
+			params.tripId || existing.trip_uuid || existing.trip_id;
+		const tripKey = tripId
+			? tripId.includes("-")
+				? "trip_uuid"
+				: "trip_id"
+			: undefined;
+
+		const restaurantObject: Record<string, unknown> = {
+			uuid: existing.uuid,
+			is_client_traveler: toBoolean(existing.is_client_traveler),
+			display_name: params.displayName ?? existing.display_name,
+			supplier_name:
+				params.supplierName ?? existing.supplier_name ?? existing.display_name,
+			supplier_conf_num:
+				params.supplierConfNum ?? existing.supplier_conf_num,
+			booking_rate: params.bookingRate ?? existing.booking_rate,
+			is_purchased: toBoolean(existing.is_purchased),
+			notes: params.notes ?? existing.notes,
+			total_cost: params.totalCost ?? existing.total_cost,
+			DateTime: {
+				date: params.date ?? existing.DateTime?.date,
+				time: normalizeTime(params.time || "") ?? existing.DateTime?.time,
+				timezone: params.timezone ?? existing.DateTime?.timezone,
+			},
+			Address: orderObjectByKeys(
+				clean({
+					address: params.street ?? existing.Address?.address,
+					city: params.city ?? existing.Address?.city,
+					state: params.state ?? existing.Address?.state,
+					zip: params.zip ?? existing.Address?.zip,
+					country: params.country ?? existing.Address?.country,
+				}),
+				ADDRESS_FIELD_ORDER,
+			),
+		};
+
+		if (tripKey) {
+			restaurantObject[tripKey] = tripId;
+		}
+
+		if (params.Image) {
+			if (Array.isArray(params.Image)) {
+				restaurantObject.Image = params.Image.map((image) => {
+					if (!image.ImageData) return image;
+					return orderObjectByKeys(image, IMAGE_FIELD_ORDER);
+				});
+			} else {
+				restaurantObject.Image = params.Image.ImageData
+					? orderObjectByKeys(params.Image, IMAGE_FIELD_ORDER)
+					: params.Image;
+			}
+		}
+
+		return this.apiPost(
+			this.endpoint("v2", `replace/restaurant/uuid/${existing.uuid}`),
+			{
+				RestaurantObject: orderObjectByKeys(
+					clean(restaurantObject),
+					RESTAURANT_FIELD_ORDER,
 				),
 			},
 		);

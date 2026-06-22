@@ -1,2 +1,2 @@
-export { TripIt, TripIt as default } from "./tripit";
+export { TripIt, type ImageAttachment } from "./tripit";
 export type * from "./types";

@@ -1,5 +1,5 @@
 import { Command, program } from "commander";
-import { TripIt } from "./src/tripit";
+import { TripItNode } from "./src/node";
 
 function requiredEnv(name: string): string {
 	const val = process.env[name];
@@ -7,8 +7,8 @@ function requiredEnv(name: string): string {
 	return val;
 }
 
-function createClient(): TripIt {
-	return new TripIt({
+function createClient(): TripItNode {
+	return new TripItNode({
 		username: requiredEnv("TRIPIT_USERNAME"),
 		password: requiredEnv("TRIPIT_PASSWORD"),
 	});
@@ -396,7 +396,7 @@ hotels
 	.action(async (id, options) => {
 		const client = createClient();
 		await client.authenticate();
-		const result = await client.attachDocument({
+		const result = await client.attachDocumentFromPath({
 			objectType: "lodging",
 			objectId: id,
 			filePath: options.file,
@@ -920,7 +920,7 @@ documents
 		}
 		const client = createClient();
 		await client.authenticate();
-		const result = await client.attachDocument({
+		const result = await client.attachDocumentFromPath({
 			objectType: options.type,
 			objectId: id,
 			filePath: options.file,

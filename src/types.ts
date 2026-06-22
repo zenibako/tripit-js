@@ -6,11 +6,17 @@ export interface CachedToken {
 	expiresAt: number;
 }
 
+export interface TokenStore {
+	load(): Promise<CachedToken | null>;
+	save(token: CachedToken): Promise<void>;
+}
+
 export interface TripItConfig {
 	clientId?: string;
 	clientSecret?: string;
 	username: string;
 	password: string;
+	tokenStore?: TokenStore;
 }
 
 export type OneOrMany<T> = T | T[];
@@ -293,4 +299,55 @@ export interface TransportResponse extends ApiMetadata, WarningContainer {
 
 export interface ActivityResponse extends ApiMetadata, WarningContainer {
 	ActivityObject: ActivityObject;
+}
+
+export interface RestaurantObject {
+	uuid: string;
+	trip_uuid?: string;
+	trip_id?: string;
+	is_client_traveler?: string;
+	relative_url?: string;
+	display_name?: string;
+	Image?: OneOrMany<TripImage>;
+	is_display_name_auto_generated?: string;
+	last_modified?: string;
+	supplier_name?: string;
+	supplier_conf_num?: string;
+	supplier_url?: string;
+	booking_rate?: string;
+	is_purchased?: string;
+	notes?: string;
+	total_cost?: string;
+	is_tripit_booking?: string;
+	is_concur_booked?: string;
+	DateTime?: DateTimeValue;
+	Address?: AddressValue;
+}
+
+export interface RestaurantResponse extends ApiMetadata, WarningContainer {
+	RestaurantObject: RestaurantObject;
+}
+
+export interface NoteObject {
+	uuid: string;
+	id?: string;
+	relative_url?: string;
+	display_name?: string;
+	is_display_name_auto_generated?: string;
+	last_modified?: string;
+	text?: string;
+	trip_uuid?: string;
+	trip_id?: string;
+}
+
+export interface NoteListResponse extends ApiMetadata {
+	NoteObject?: OneOrMany<NoteObject>;
+	page_num?: string;
+	page_size?: string;
+	max_page?: string;
+	total_items?: string;
+}
+
+export interface NoteResponse extends ApiMetadata {
+	NoteObject: NoteObject;
 }

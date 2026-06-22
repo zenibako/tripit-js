@@ -1,4 +1,4 @@
-export function normalizeTime(time: string): string | undefined {
+export function normalizeTime(time: string | undefined): string | undefined {
 	if (!time) return undefined;
 	const parts = time.split(":");
 	if (parts.length === 2) return `${time}:00`;
